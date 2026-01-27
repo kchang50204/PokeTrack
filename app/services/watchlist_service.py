@@ -1,21 +1,27 @@
-from app.db.database import get_conn
+from sqlalchemy.orm import Session
+from sqlalchemy import desc
 
-def add_to_watchlist(card_name: str):
-    with get_conn() as conn:
-        conn.execute(
-            "INSERT OR IGNORE INTO watchlist(card_name) VALUES (?)",
-            (card_name.lower(),)
-        )
-        conn.commit()
+from app.models.watchlist import WatchlistItem
 
-def remove_from_watchlist(card_name: str):
-    with get_conn() as conn:
-        conn.execute("DELETE FROM watchlist WHERE card_name = ?", (card_name.lower(),))
-        conn.commit()
+def add_to_watchlist(db: Session, card_name: str) -> None:
+    name = card_name.strip().lower()
+    if not name:
+        return
 
-def list_watchlist():
-    with get_conn() as conn:
-        rows = conn.execute(
-            "SELECT card_name, created_at FROM watchlist ORDER BY created_at DESC"
-        ).fetchall()
-        return [dict(r) for r in rows]
+    existing = db.query(WatchlistItem).filter(WatchlistItem.card_name == name).first()
+    if existing:
+        return
+
+    db.add(WatchlistItem(card_name=name))
+    db.commit()
+
+def remove_from_watchlist(db: Session, card_name: str) -> None:
+    name = card_name.strip().lower()
+    if not name:
+        return
+
+    db.query(WatchlistItem).filter(WatchlistItem.card_name == name).delete()
+    db.commit()
+
+def list_watchlist(db: Session):
+    return db.query(WatchlistItem).order_by(desc(WatchlistItem.created_at)).all()

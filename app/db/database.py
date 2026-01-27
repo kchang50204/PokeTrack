@@ -1,20 +1,23 @@
-import sqlite3
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from pathlib import Path
 
 DB_PATH = Path(__file__).resolve().parent.parent.parent / "poketrack.db"
+DATABASE_URL = f"sqlite:///{DB_PATH}"
 
-def get_conn():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={"check_same_thread": False},  # needed for SQLite + FastAPI
+)
 
-def init_db():
-    with get_conn() as conn:
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS watchlist (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            card_name TEXT NOT NULL UNIQUE,
-            created_at TEXT NOT NULL DEFAULT (datetime('now'))
-        )
-        """)
-        conn.commit()
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+class Base(DeclarativeBase):
+    pass
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

@@ -3,11 +3,14 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.cards import router as cards_router
 from app.api.watchlist import router as watchlist_router
-from app.db.database import init_db
+from app.db.database import Base, engine
+from app.models.watchlist import WatchlistItem
+
+
 
 app = FastAPI(title="PokeTrack API")   # ✅ app MUST be defined first
 
-init_db()                              # ✅ safe to call after app exists
+Base.metadata.create_all(bind=engine)
 
 app.add_middleware(
     CORSMiddleware,
