@@ -1,5 +1,11 @@
-import { useState } from "react";
-import { searchCards, getPriceHistory } from "./lib/api";
+import { useEffect, useMemo, useState } from "react";
+import {
+  searchCards,
+  getPriceHistory,
+  getWatchlist,
+  addToWatchlist,
+  removeFromWatchlist,
+} from "./lib/api";
 
 export default function App() {
   const [query, setQuery] = useState("");
@@ -10,6 +16,42 @@ export default function App() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // Watchlist state
+  const [watchlist, setWatchlist] = useState([]);
+  const [watchlistLoading, setWatchlistLoading] = useState(false);
+  const [watchlistError, setWatchlistError] = useState("");
+
+  // Load watchlist on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        setWatchlistLoading(true);
+        const data = await getWatchlist();
+        setWatchlist(data || []);
+        setWatchlistError("");
+      } catch (err) {
+        setWatchlistError(err.message || "Failed to load watchlist");
+      } finally {
+        setWatchlistLoading(false);
+      }
+    })();
+  }, []);
+
+  // For quick "is saved?" checks
+  const watchlistSet = useMemo(
+    () => new Set(watchlist.map((w) => w.card_name?.toLowerCase())),
+    [watchlist]
+  );
+
+  function isSaved(cardName) {
+    return watchlistSet.has(cardName.toLowerCase());
+  }
+
+  async function refreshWatchlist() {
+    const data = await getWatchlist();
+    setWatchlist(data || []);
+  }
 
   async function handleSearch(e) {
     e.preventDefault();
@@ -45,6 +87,45 @@ export default function App() {
       setLoading(false);
     }
   }
+  
+  useEffect(() => {
+  if (!selected) return;
+  (async () => {
+    try {
+      setLoading(true);
+      const data = await getPriceHistory(selected.name, days);
+      setPriceData(data);
+      setError("");
+    } catch (err) {
+      setError(err.message || "Failed to load price history");
+    } finally {
+      setLoading(false);
+    }
+  })();
+}, [days]); // runs when days changes
+
+
+  async function handleAddToWatchlist(cardName) {
+    try {
+      setError("");
+      await addToWatchlist(cardName);
+      await refreshWatchlist();
+    } catch (err) {
+      setError(err.message || "Failed to add to watchlist");
+    }
+  }
+
+  async function handleRemoveFromWatchlist(cardName) {
+  const key = cardName.toLowerCase();
+  try {
+    setError("");
+    await removeFromWatchlist(cardName); // backend lowercases anyway
+    setWatchlist((prev) => prev.filter((x) => x.card_name?.toLowerCase() !== key));
+  } catch (err) {
+    setError(err.message || "Failed to remove from watchlist");
+  }
+}
+
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100">
@@ -114,10 +195,28 @@ export default function App() {
                             : "border-gray-800 bg-gray-950/30 hover:border-gray-700"
                         }`}
                     >
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between gap-3">
                         <span className="font-medium">{card.name}</span>
-                        <span className="text-xs text-gray-400">{card.rarity}</span>
+
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-400">
+                            {card.rarity}
+                          </span>
+
+                          <button
+                            type="button"
+                            className="rounded-lg border border-gray-700 bg-gray-950/40 px-2 py-1 text-xs text-gray-200 hover:border-gray-500 disabled:opacity-50"
+                            disabled={isSaved(card.name)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleAddToWatchlist(card.name);
+                            }}
+                          >
+                            {isSaved(card.name) ? "Saved" : "Add"}
+                          </button>
+                        </div>
                       </div>
+
                       <div className="mt-1 text-xs text-gray-500">{card.set}</div>
                     </button>
                   </li>
@@ -183,6 +282,49 @@ export default function App() {
             )}
           </section>
         </div>
+
+        {/* Watchlist Panel */}
+        <section className="mt-6 rounded-2xl border border-gray-800 bg-gray-900/40 p-5">
+          <h2 className="mb-3 text-lg font-semibold">Watchlist</h2>
+
+          {watchlistLoading && (
+            <p className="text-sm text-gray-400">Loading watchlist…</p>
+          )}
+
+          {watchlistError && (
+            <p className="text-sm text-red-300">{watchlistError}</p>
+          )}
+
+          {!watchlistLoading && !watchlistError && watchlist.length === 0 && (
+            <p className="text-sm text-gray-400">No cards saved yet.</p>
+          )}
+
+          {watchlist.length > 0 && (
+  <ul className="space-y-2">
+    {watchlist.map((item) => (
+      <li
+        key={item.card_name}
+        className="flex items-center justify-between rounded-xl border border-gray-800 bg-gray-950/30 px-4 py-3"
+      >
+        <div>
+          <div className="font-medium">{item.card_name}</div>
+          <div className="text-xs text-gray-500">
+            Added: {new Date(item.created_at).toLocaleString()}
+          </div>
+        </div>
+
+        <button
+          className="rounded-lg border border-gray-700 px-3 py-2 text-xs hover:border-gray-500"
+          onClick={() => handleRemoveFromWatchlist(item.card_name)}
+        >
+          Remove
+        </button>
+      </li>
+    ))}
+  </ul>
+)}
+
+        </section>
 
         <footer className="mt-10 text-xs text-gray-500">
           Tip: if the UI can’t reach the API, check FastAPI is running and CORS allows
